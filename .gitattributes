@@ -1,0 +1,7 @@
+# Keep every tracked text file at LF in the repository AND in the checkout.
+#
+# CI proves `lib/client.js` matches a fresh build byte for byte. With Git's
+# default Windows `autocrlf`, the checkout would hold CRLF while the build writes
+# LF, so that gate would fail on every push for a reason that has nothing to do
+# with the code.
+* text=auto eol=lf

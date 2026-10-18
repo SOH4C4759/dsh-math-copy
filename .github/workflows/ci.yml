@@ -1,0 +1,64 @@
+name: ci
+
+# Pinned image on purpose: `ubuntu-latest`/`windows-latest` migrate on a schedule
+# and show up as an ANNOTATION on every run — the job stays green, so it reads as
+# noise, but it puts a yellow badge on a public repository and makes runs
+# non-reproducible across the migration window. The client half is plain ES2022
+# and the suites are Node-only; windows-2022 is chosen because the browser
+# harness drives the Edge that ships with the image.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # Parsing every file catches the class of mistake the suites cannot: a
+      # syntax error in a path they do not import.
+      - name: Syntax check
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path . -Recurse -File -Include *.js,*.mjs |
+            Where-Object { $_.FullName -notmatch '\\node_modules\\' }
+          Write-Host "checking $($files.Count) files"
+          $bad = 0
+          foreach ($file in $files) {
+            node --check $file.FullName
+            if ($LASTEXITCODE -ne 0) { Write-Host "::error file=$($file.Name)::syntax error"; $bad++ }
+          }
+          if ($bad -gt 0) { throw "$bad file(s) failed to parse" }
+
+      # The published client bundle must be the built copy, never a hand-edited
+      # lib/ that drifted from src/.
+      - name: Rebuild the client bundle
+        shell: pwsh
+        run: |
+          node build-client.mjs
+          git diff --exit-code -- lib/client.js
+          if ($LASTEXITCODE -ne 0) { throw 'lib/client.js is stale — run node build-client.mjs and commit the result' }
+
+      # Pure decisions: clipboard payloads per target, KaTeX annotation
+      # extraction, and the apply() wiring (listeners + both slot consumers).
+      - name: Offline suite
+        shell: pwsh
+        run: node tools/verify-client.mjs
+
+      # Real DOM: the page builds KaTeX-shaped subtrees and asserts the bar, the
+      # four payloads and the selection rewrite in headless Edge over CDP. The
+      # runner step prints SKIP with a reason when the browser is absent instead
+      # of pretending to pass.
+      - name: Browser harness
+        shell: pwsh
+        run: node tools/harness-run.mjs

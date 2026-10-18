@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-math-copy harness</title>
+<style>
+  body { font: 15px/1.7 -apple-system, "Segoe UI", sans-serif; padding: 40px; color: #1f2328; }
+  #out { font: 12px/1.6 ui-monospace, monospace; background: #f5f5f7; padding: 12px; white-space: pre-wrap; }
+  .katex-mathml { position: absolute; clip: rect(1px, 1px, 1px, 1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
+  .katex-display { display: block; margin: 1em 0; overflow-x: auto; overflow-y: hidden; }
+</style>
+</head>
+<body>
+<p id="para">质能关系 <span id="inline-formula"></span> 成立，独立公式如下。</p>
+<div id="block-formula"></div>
+<pre id="out">harness starting…</pre>
+
+<script>
+  // A KaTeX subtree shaped exactly like the real renderer's output: the plugin
+  // only reads `.katex`, `.katex-display` and the MathML annotation, so the
+  // harness reproduces that structure rather than importing KaTeX.
+  function katexHTML(tex, display) {
+    const inner =
+      '<span class="katex">' +
+        '<span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML">' +
+          '<semantics><mrow><mi>x</mi></mrow>' +
+          '<annotation encoding="application/x-tex">' + tex + '</annotation>' +
+          '</semantics></math></span>' +
+        '<span class="katex-html" aria-hidden="true"><span class="mord">x</span></span>' +
+      '</span>'
+    return display ? '<span class="katex-display">' + inner + '</span>' : inner
+  }
+
+  document.getElementById('inline-formula').innerHTML = katexHTML('x^2+1', false)
+  document.getElementById('block-formula').innerHTML = katexHTML('a = b', true)
+</script>
+
+<script>
+  // Capture the loader registration before the plugin runs.
+  window.__ModuleLoader__ = { load: function (definition) { window.__mathCopyDefinition = definition } }
+</script>
+<script src="../lib/client.js"></script>
+
+<script>
+  (function () {
+    const lines = []
+    const results = { pass: 0, fail: 0 }
+    function check(name, condition, detail) {
+      if (condition) { results.pass += 1; lines.push('PASS ' + name) }
+      else { results.fail += 1; lines.push('FAIL ' + name + (detail === undefined ? '' : ' — ' + detail)) }
+    }
+
+    // The page context cannot use the real clipboard; record what would be written.
+    let copied = null
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: function (text) { copied = text; return Promise.resolve() } },
+    })
+
+    const definition = window.__mathCopyDefinition
+    check('loader registration captured', definition !== undefined && definition.id === 'dsh-math-copy')
+    const plugin = definition.factory(function () { return {} })
+    check('plugin exposes apply', typeof plugin.apply === 'function')
+
+    const slots = []
+    plugin.apply({
+      slots: {
+        inject: function (slot, callback) { slots.push(slot); callback(); return function () {} },
+        register: function () { return function () {} },
+      },
+      effect: function (run) { const dispose = run(); return typeof dispose === 'function' ? dispose : function () {} },
+    })
+    check('apply registered both consumer slots', slots.length === 2, JSON.stringify(slots))
+
+    const barBefore = document.querySelector('[data-dmc-bar]')
+    check('copy bar is created lazily', barBefore === null)
+
+    function hover(element) {
+      element.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, composed: true }))
+    }
+
+    // ---- inline formula ----------------------------------------------------
+    hover(document.querySelector('#inline-formula .katex-html span'))
+    const bar = document.querySelector('[data-dmc-bar]')
+    check('copy bar exists after a hover', bar !== null)
+    check('hover opens the bar', bar.getAttribute('data-open') === '1')
+    check('bar is positioned', bar.style.left !== '' && bar.style.top !== '')
+
+    bar.querySelector('[data-format="obsidian"]').click()
+    check('inline Obsidian payload', copied === '$x^2+1$', JSON.stringify(copied))
+    check('bar stays open after copying', bar.getAttribute('data-open') === '1')
+
+    bar.querySelector('[data-format="latex"]').click()
+    check('inline LaTeX payload', copied === '\\(x^2+1\\)', JSON.stringify(copied))
+
+    // ---- display formula ---------------------------------------------------
+    hover(document.querySelector('#block-formula .katex .katex-html span'))
+    bar.querySelector('[data-format="obsidian"]').click()
+    check('display Obsidian payload', copied === '$$\na = b\n$$', JSON.stringify(copied))
+
+    bar.querySelector('[data-format="tex"]').click()
+    check('display raw TeX payload', copied === 'a = b', JSON.stringify(copied))
+
+    // ---- selection copy ----------------------------------------------------
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('para'))
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const event = new Event('copy', { bubbles: true, cancelable: true })
+    const store = {}
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        setData: function (type, value) { store[type] = value },
+        getData: function (type) { return store[type] },
+      },
+    })
+    document.dispatchEvent(event)
+
+    const plain = store['text/plain']
+    check('selection copy writes text/plain', typeof plain === 'string' && plain.length > 0)
+    check('selection copy restores the formula source', plain.includes('$x^2+1$'), JSON.stringify(plain))
+    check('selection copy keeps the prose', plain.includes('质能关系') && plain.includes('成立'), JSON.stringify(plain))
+    check('selection copy does not duplicate glyphs', !plain.includes('x2'), JSON.stringify(plain))
+    check('selection copy cancels the native event', event.defaultPrevented === true)
+
+    // ---- a selection without math is left alone ----------------------------
+    const plainRange = document.createRange()
+    plainRange.selectNodeContents(document.getElementById('block-formula').parentElement)
+    // Take a text-only range outside any formula: the <pre> that holds results.
+    const only = document.createRange()
+    only.selectNodeContents(document.getElementById('out'))
+    selection.removeAllRanges()
+    selection.addRange(only)
+    const second = new Event('copy', { bubbles: true, cancelable: true })
+    Object.defineProperty(second, 'clipboardData', { value: { setData: function () {}, getData: function () { return '' } } })
+    document.dispatchEvent(second)
+    check('math-free selection is not intercepted', second.defaultPrevented === false)
+
+    // ---- the bar retargets, and hides on scroll ---------------------------
+    hover(document.querySelector('#inline-formula .katex'))
+    check('bar reopens for another formula', bar.getAttribute('data-open') === '1')
+    window.dispatchEvent(new Event('scroll'))
+    check('scroll hides the bar', bar.getAttribute('data-open') === '0')
+
+    lines.push('RESULT pass=' + results.pass + ' fail=' + results.fail)
+    document.getElementById('out').textContent = lines.join('\n')
+  })()
+</script>
+</body>
+</html>

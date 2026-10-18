@@ -1,0 +1,10 @@
+# dsh-math-copy bundle layer: mounted by `dsh plugin add`, so a profile gets
+# this row without manual cordis.patch.yml edits. A profile-level patch can still
+# disable the row by id.
+#
+# The row id is a contract only in the loose sense: the browser half needs no
+# settings namespace, so nothing else spells this string.
+
+- insert:
+    - id: math-copy
+      name: dsh-math-copy
