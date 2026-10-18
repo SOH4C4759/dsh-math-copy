@@ -1,6 +1,6 @@
 {
   "name": "dsh-math-copy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "把回答里的数学公式复制成可在 Obsidian / LaTeX 中重新渲染的 TeX：悬停公式出现三种格式的复制按钮，选中带公式的文本再 Ctrl+C 时公式会被还原成源码，而不是一堆字形。",
   "license": "MIT",
   "author": "lxj5820",
