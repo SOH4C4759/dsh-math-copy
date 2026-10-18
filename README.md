@@ -3,7 +3,7 @@
 [![ci](https://github.com/SOH4C4759/dsh-math-copy/actions/workflows/ci.yml/badge.svg)](https://github.com/SOH4C4759/dsh-math-copy/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> 视频讲解：[把 DSH 里的公式复制成能重新渲染的 TeX](https://www.bilibili.com/video/BV1CVn36REec)（91 秒）
+> 演示：[把 DSH 里的公式复制成能重新渲染的 TeX](https://www.bilibili.com/video/BV1vVn56pEqi)（24 秒实录，无配音）
 
 把 DSH 回答里的数学公式，复制成 **能在 Obsidian / LaTeX 里重新渲染的 TeX**，而不是一堆字形。
 
